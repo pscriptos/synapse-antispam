@@ -81,6 +81,12 @@ Das Modul leitet bestimmte Ereignisse an einen externen HTTP-Dienst weiter – i
 
 > Hinweis: Dieses Repository enthält keine Quelltexte des Moduls selbst, sondern dokumentiert nur die Verwendung des vorkonfigurierten Docker-Images.
 
+## 💬 Support & Community
+
+Du hast Fragen, brauchst Unterstützung bei der Einrichtung oder möchtest dich einfach mit anderen austauschen, die ähnliche Projekte betreiben? Dann schau gerne in unserer Techniverse Community vorbei:
+
+👉 **Matrix-Raum:** [#community:techniverse.net](https://matrix.to/#/#community:techniverse.net)  
+Wir freuen uns auf deinen Besuch und helfen dir gerne weiter!
 
 <p align="center">
   <img src="https://assets.techniverse.net/f1/git/graphics/gray0-catonline.svg" alt="">
