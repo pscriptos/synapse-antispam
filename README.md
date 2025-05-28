@@ -17,7 +17,7 @@ Das Image basiert auf `matrixdotorg/synapse:latest` und wird automatisch um das 
 
 👉 **Hinweis:** Die Images werden nur für offizielle Hauptversionen von Synapse gebaut, nicht für Pre-Releases oder Release Candidates.  
 Eine Übersicht aller verfügbaren Versionen findest du hier:  
-[https://github.com/element-hq/synapse/tags](https://github.com/element-hq/synapse/tags)
+[Synapse with HTTPAntiSpam: Tags](https://repo.techniverse.net/#browse/browse:docker-hosted:v2%2Fdocker-hosted%2Fsynapse%2Ftags)
 
 ### Beispiel: docker-compose.yml
 
