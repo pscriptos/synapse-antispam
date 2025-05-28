@@ -15,6 +15,10 @@ Das Image basiert auf `matrixdotorg/synapse:latest` und wird automatisch um das 
 - `repo.techniverse.net/docker-hosted/custom-synapse:latest-antispam` – immer die aktuellste Version
 - `repo.techniverse.net/docker-hosted/custom-synapse:v1.130.0-antispam` – spezifische Synapse-Version mit Modul
 
+👉 **Hinweis:** Die Images werden nur für offizielle Hauptversionen von Synapse gebaut, nicht für Pre-Releases oder Release Candidates.  
+Eine Übersicht aller verfügbaren Versionen findest du hier:  
+[https://github.com/element-hq/synapse/tags](https://github.com/element-hq/synapse/tags)
+
 ### Beispiel: docker-compose.yml
 
 ```yaml
