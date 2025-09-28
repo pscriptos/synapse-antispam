@@ -12,12 +12,12 @@ Das Image basiert auf `matrixdotorg/synapse:latest` und wird automatisch um das 
 
 ### Verfügbare Tags
 
-- `repo.techniverse.net/docker-hosted/custom-synapse:latest-antispam` – immer die aktuellste Version
-- `repo.techniverse.net/docker-hosted/custom-synapse:v1.130.0-antispam` – spezifische Synapse-Version mit Modul
+- `git.techniverse.net/scriptos/synapse:latest-antispam` – immer die aktuellste Version
+- `git.techniverse.net/scriptos/synapse:v1.138.0-antispam` – spezifische Synapse-Version mit Modul
 
 👉 **Hinweis:** Die Images werden nur für offizielle Hauptversionen von Synapse gebaut, nicht für Pre-Releases oder Release Candidates.  
 Eine Übersicht aller verfügbaren Versionen findest du hier:  
-[Synapse with HTTPAntiSpam: Tags](https://repo.techniverse.net/#browse/browse:docker-hosted:v2%2Fdocker-hosted%2Fsynapse%2Ftags)
+[Synapse with HTTPAntiSpam: Tags](https://git.techniverse.net/scriptos/-/packages/container/synapse)
 
 ### Beispiel: docker-compose.yml
 
@@ -33,7 +33,7 @@ services:
 Alternativ kannst du direkt ein vorgefertigtes Image mit Tag verwenden, z. B.:
 
 ```yaml
-image: repo.techniverse.net/docker-hosted/custom-synapse:v1.130.0-antispam
+image: git.techniverse.net/scriptos/synapse:v1.138.0-antispam
 ```
 
 ## 🔧 Konfiguration in homeserver.yaml
