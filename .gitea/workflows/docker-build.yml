@@ -126,7 +126,7 @@ jobs:
           SERVER_URL="${{ gitea.server_url }}"
           REPO="${{ gitea.repository }}"
           TITLE="✅ Synapse aktualisiert"
-          MESSAGE=$"gitea_actions:\nNeues Docker-Image '${VERSIONED_TAG}' erfolgreich gebaut und in die Registry ${REGISTRY_HOST}/${OWNER}/-/packages/container/${IMAGE} gepusht. -- Weitere Infos hier: ${SERVER_URL}/${REPO}"
+          MESSAGE="gitea_actions: Neues Docker-Image '${VERSIONED_TAG}' erfolgreich gebaut und in die Registry ${REGISTRY_HOST}/${OWNER}/-/packages/container/${IMAGE} gepusht. -- Weitere Infos hier: ${SERVER_URL}/${REPO}"
 
           # Öffentlicher Topic – optional mit Auth (falls ntfy Auth erfordert)
           if [ -n "$NTFY_PUBLIC" ]; then
