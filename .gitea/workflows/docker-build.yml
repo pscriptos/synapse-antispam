@@ -130,11 +130,15 @@ jobs:
 
           # Öffentlicher Topic (kein Auth) – optional
           if [ -n "$NTFY_PUBLIC" ]; then
-            curl -f -X POST "$NTFY_PUBLIC" \
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$NTFY_PUBLIC" \
               -H "Title: ${TITLE}" \
               -H "Priority: 4" \
-              -d "$MESSAGE" \
-            || echo "⚠️ Ntfy (public) Zustellung fehlgeschlagen"
+              -d "$MESSAGE")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "✓ Ntfy (public) zugestellt"
+            else
+              echo "⚠️ Ntfy (public) Zustellung fehlgeschlagen (HTTP ${HTTP_CODE})"
+            fi
           fi
 
           # Gesicherter Topic (mit Bearer-Token) – optional
