@@ -1,0 +1,143 @@
+name: Build & Push Synapse Antispam Image
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # täglich 03:00 UTC
+  workflow_dispatch:      # manueller Trigger über die Gitea UI
+
+env:
+  IMAGE_NAME: synapse
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # 1. Neuesten stabilen Synapse-Tag von Docker Hub holen (keine RC-Tags)
+      # -----------------------------------------------------------------------
+      - name: Neuesten stabilen Synapse-Tag ermitteln
+        id: synapse
+        run: |
+          LATEST_TAG=$(curl -sf \
+            "https://hub.docker.com/v2/repositories/matrixdotorg/synapse/tags?page_size=100" \
+            | jq -r '.results[].name' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V \
+            | tail -n1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "::error::Kein gültiger Synapse-Release-Tag gefunden!"
+            exit 1
+          fi
+
+          echo "tag=$LATEST_TAG"                        >> "$GITHUB_OUTPUT"
+          echo "versioned_tag=${LATEST_TAG}-antispam"   >> "$GITHUB_OUTPUT"
+          echo "Aktuellster stabiler Tag: $LATEST_TAG"
+
+      # -----------------------------------------------------------------------
+      # 2. Prüfen ob der versionierte Tag schon in der Registry existiert
+      # -----------------------------------------------------------------------
+      - name: Prüfen ob Image bereits in Registry vorhanden
+        id: check
+        run: |
+          VERSIONED_TAG="${{ steps.synapse.outputs.versioned_tag }}"
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ gitea.server_url }}/api/v1/packages/${{ gitea.repository_owner }}/container/${{ env.IMAGE_NAME }}/${VERSIONED_TAG}" \
+            -H "Authorization: token ${{ secrets.TOKEN }}")
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "exists=true"  >> "$GITHUB_OUTPUT"
+            echo "Tag '${VERSIONED_TAG}' bereits vorhanden – kein Build nötig."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Tag '${VERSIONED_TAG}' nicht gefunden – Build wird gestartet."
+          fi
+
+      # -----------------------------------------------------------------------
+      # 3. Registry Login
+      # -----------------------------------------------------------------------
+      - name: Registry Login
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          echo "${{ secrets.TOKEN }}" \
+            | docker login "${{ vars.REGISTRY_HOST }}" \
+                -u "${{ secrets.REGISTRY_USER }}" --password-stdin
+
+      # -----------------------------------------------------------------------
+      # 4. Docker Image bauen (SYNAPSE_VERSION als Build-Arg übergeben)
+      # -----------------------------------------------------------------------
+      - name: Docker Image bauen
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          REGISTRY="${{ vars.REGISTRY_HOST }}/${{ gitea.repository_owner }}/${{ env.IMAGE_NAME }}"
+          SYNAPSE_TAG="${{ steps.synapse.outputs.tag }}"
+          VERSIONED_TAG="${{ steps.synapse.outputs.versioned_tag }}"
+
+          docker build \
+            --no-cache \
+            --build-arg SYNAPSE_VERSION="${SYNAPSE_TAG}" \
+            -t "${REGISTRY}:${VERSIONED_TAG}" \
+            -t "${REGISTRY}:latest-antispam" \
+            .
+
+      # -----------------------------------------------------------------------
+      # 5. Alten 'latest-antispam' Tag in Gitea löschen, damit Gitea das Datum
+      #    korrekt aktualisiert (gleiche Logik wie im bisherigen Bash-Skript)
+      # -----------------------------------------------------------------------
+      - name: Alten 'latest-antispam' Tag aus Registry löschen
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          curl -s -X DELETE \
+            "${{ gitea.server_url }}/api/v1/packages/${{ gitea.repository_owner }}/container/${{ env.IMAGE_NAME }}/latest-antispam" \
+            -H "Authorization: token ${{ secrets.TOKEN }}" || true
+
+      # -----------------------------------------------------------------------
+      # 6. Beide Tags in die Registry pushen
+      # -----------------------------------------------------------------------
+      - name: Images pushen
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          REGISTRY="${{ vars.REGISTRY_HOST }}/${{ gitea.repository_owner }}/${{ env.IMAGE_NAME }}"
+          VERSIONED_TAG="${{ steps.synapse.outputs.versioned_tag }}"
+
+          docker push "${REGISTRY}:${VERSIONED_TAG}"
+          docker push "${REGISTRY}:latest-antispam"
+
+      # -----------------------------------------------------------------------
+      # 7. Ntfy Erfolgs-Benachrichtigung
+      #    Secrets werden als Umgebungsvariablen übergeben, damit sie nicht
+      #    direkt in Shell-Kommandos interpoliert werden.
+      # -----------------------------------------------------------------------
+      - name: Ntfy Benachrichtigung senden
+        if: steps.check.outputs.exists == 'false'
+        env:
+          NTFY_PUBLIC:  ${{ secrets.NTFY_TOPIC_PUBLIC }}
+          NTFY_SECURED: ${{ secrets.NTFY_TOPIC_SECURED }}
+          NTFY_TOKEN:   ${{ secrets.NTFY_AUTH_TOKEN }}
+        run: |
+          VERSIONED_TAG="${{ steps.synapse.outputs.versioned_tag }}"
+          TITLE="✅ Synapse aktualisiert"
+          MESSAGE="Neues Docker-Image '${VERSIONED_TAG}' wurde erfolgreich gebaut und in die Registry gepusht."
+
+          # Öffentlicher Topic (kein Auth) – optional
+          if [ -n "$NTFY_PUBLIC" ]; then
+            curl -sf -X POST "$NTFY_PUBLIC" \
+              -H "Title: ${TITLE}" \
+              -H "Priority: 4" \
+              -d "$MESSAGE" \
+            || echo "⚠️ Ntfy (public) Zustellung fehlgeschlagen"
+          fi
+
+          # Gesicherter Topic (mit Bearer-Token) – optional
+          if [ -n "$NTFY_SECURED" ]; then
+            curl -sf -X POST "$NTFY_SECURED" \
+              -H "Authorization: Bearer ${NTFY_TOKEN}" \
+              -H "Title: ${TITLE}" \
+              -H "Priority: 4" \
+              -d "$MESSAGE" \
+            || echo "⚠️ Ntfy (secured) Zustellung fehlgeschlagen"
+          fi
