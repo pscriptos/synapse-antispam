@@ -120,12 +120,17 @@ jobs:
           NTFY_TOKEN:   ${{ secrets.NTFY_AUTH_TOKEN }}
         run: |
           VERSIONED_TAG="${{ steps.synapse.outputs.versioned_tag }}"
+          REGISTRY_HOST="${{ vars.REGISTRY_HOST }}"
+          OWNER="${{ gitea.repository_owner }}"
+          IMAGE="${{ env.IMAGE_NAME }}"
+          SERVER_URL="${{ gitea.server_url }}"
+          REPO="${{ gitea.repository }}"
           TITLE="✅ Synapse aktualisiert"
-          MESSAGE="Neues Docker-Image '${VERSIONED_TAG}' wurde erfolgreich gebaut und in die Registry gepusht."
+          MESSAGE="Neues Docker-Image '${VERSIONED_TAG}' erfolgreich gebaut und in die Registry ${REGISTRY_HOST}/${OWNER}/-/packages/container/${IMAGE} gepusht. -- Weitere Infos hier: ${SERVER_URL}/${REPO}"
 
           # Öffentlicher Topic (kein Auth) – optional
           if [ -n "$NTFY_PUBLIC" ]; then
-            curl -sf -X POST "$NTFY_PUBLIC" \
+            curl -f -X POST "$NTFY_PUBLIC" \
               -H "Title: ${TITLE}" \
               -H "Priority: 4" \
               -d "$MESSAGE" \
