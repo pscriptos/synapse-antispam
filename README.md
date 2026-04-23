@@ -1,4 +1,25 @@
-# Synapse Docker Image mit integriertem HTTP Antispam Modul
+<p align="center">
+  <a href="https://techniverse.net">
+    <img src="https://assets.techniverse.net/f1/git/graphics/repo-techniverse-logo.png" alt="Techniverse Community" height="70" />
+  </a>
+</p>
+
+<h1 align="center">Synapse Docker Image mit HTTP Antispam Modul</h1>
+
+<h4 align="center">
+  Vorgefertigtes Docker-Image für Matrix Synapse mit integriertem HTTP-Antispam-Modul zur Anbindung von Draupnir als externem Spamfilter.
+</h4>
+
+<h6 align="center">
+  <a href="https://www.cleveradmin.de">🏰 Website</a>
+  ·
+  <a href="https://techniverse.net">📰 Community</a>
+  ·
+  <a href="https://social.techniverse.net/@donnerwolke">🐘 Mastodon</a>
+  ·
+  <a href="https://matrix.to/#/#support:techniverse.net">💬 Support</a>
+</h6>
+<br><br>
 
 > 📝 Diese Dokumentation ergänzt den Blogbeitrag  
 > [🔐 Matrix absichern mit Draupnir Antispam Modul (Blog)](https://www.cleveradmin.de/blog/2025/05/matrix-absichern-mit-draupnir-antispam-modul/)  
@@ -88,10 +109,13 @@ Du hast Fragen, brauchst Unterstützung bei der Einrichtung oder möchtest dich 
 👉 **Matrix-Raum:** [#community:techniverse.net](https://matrix.to/#/#community:techniverse.net)  
 Wir freuen uns auf deinen Besuch und helfen dir gerne weiter!
 
+<br><br>
 <p align="center">
   <img src="https://assets.techniverse.net/f1/git/graphics/gray0-catonline.svg" alt="">
 </p>
 
 <p align="center">
-<img src="https://assets.techniverse.net/f1/logos/small/license.png" alt="License" width="15" height="15"> <a href="./synapse-antispam/src/branch/main/LICENSE">License</a> | <img src="https://assets.techniverse.net/f1/logos/small/matrix2.svg" alt="Matrix" width="15" height="15"> <a href="https://matrix.to/#/#community:techniverse.net">Matrix</a> | <img src="https://assets.techniverse.net/f1/logos/small/mastodon2.svg" alt="Matrix" width="15" height="15"> <a href="https://social.techniverse.net/@donnerwolke">Mastodon</a>
+  <sub>
+     © Patrick Asmus · Techniverse Network · <a href="./LICENSE">Lizenz</a>
+  </sub>
 </p>
