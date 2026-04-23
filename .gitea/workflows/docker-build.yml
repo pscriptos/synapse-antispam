@@ -2,7 +2,7 @@ name: Build & Push Synapse Antispam Image
 
 on:
   schedule:
-    - cron: '0 * * * *'  # stündlich
+    - cron: '0 18 * * *'  # täglich um 18:00 Uhr
   workflow_dispatch:      # manueller Trigger über die Gitea UI
 
 env:
