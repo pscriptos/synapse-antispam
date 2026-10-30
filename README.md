@@ -36,6 +36,8 @@ Das Image basiert auf `matrixdotorg/synapse:latest` und wird automatisch um das 
 - `git.techniverse.net/scriptos/synapse:latest-antispam` – immer die aktuellste Version
 - `git.techniverse.net/scriptos/synapse:v1.138.0-antispam` – spezifische Synapse-Version mit Modul
 
+🖥️ **Architekturen:** Alle Images werden als Multi-Arch-Image für `linux/amd64` und `linux/arm64` bereitgestellt – Docker zieht automatisch die passende Variante.
+
 👉 **Hinweis:** Die Images werden nur für offizielle Hauptversionen von Synapse gebaut, nicht für Pre-Releases oder Release Candidates.  
 Eine Übersicht aller verfügbaren Versionen findest du hier:  
 [Synapse with HTTPAntiSpam: Tags](https://git.techniverse.net/scriptos/-/packages/container/synapse)

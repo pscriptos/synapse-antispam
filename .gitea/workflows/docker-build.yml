@@ -4,9 +4,22 @@ on:
   schedule:
     - cron: '0 18 * * *'  # täglich um 18:00 Uhr
   workflow_dispatch:      # manueller Trigger über die Gitea UI
+    inputs:
+      synapse_version:
+        description: 'Synapse-Version (z. B. v1.164.1) – leer = neueste stabile Version'
+        required: false
+        default: ''
+      force:
+        description: 'Image neu bauen, auch wenn der Tag bereits existiert'
+        type: boolean
+        required: false
+        default: false
 
 env:
   IMAGE_NAME: synapse
+  # Zielplattformen – die Images werden immer als Multi-Arch-Manifest gebaut,
+  # unabhängig davon, auf welcher Architektur der Runner läuft.
+  PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   build:
@@ -17,10 +30,13 @@ jobs:
         uses: actions/checkout@v4
 
       # -----------------------------------------------------------------------
-      # 1. Neuesten stabilen Synapse-Tag von Docker Hub holen (keine RC-Tags)
+      # 1. Synapse-Tag ermitteln: manuell vorgegeben oder neuester stabiler
+      #    Tag von Docker Hub (keine RC-Tags)
       # -----------------------------------------------------------------------
-      - name: Neuesten stabilen Synapse-Tag ermitteln
+      - name: Synapse-Tag ermitteln
         id: synapse
+        env:
+          INPUT_VERSION: ${{ inputs.synapse_version }}
         run: |
           LATEST_TAG=$(curl -sf \
             "https://hub.docker.com/v2/repositories/matrixdotorg/synapse/tags?page_size=100" \
@@ -34,31 +50,73 @@ jobs:
             exit 1
           fi
 
-          echo "tag=$LATEST_TAG"                        >> "$GITHUB_OUTPUT"
-          echo "versioned_tag=${LATEST_TAG}-antispam"   >> "$GITHUB_OUTPUT"
-          echo "Aktuellster stabiler Tag: $LATEST_TAG"
+          TAG="${INPUT_VERSION:-$LATEST_TAG}"
+          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Ungültige Synapse-Version '${TAG}' (erwartet z. B. v1.164.1)"
+            exit 1
+          fi
+
+          # 'latest-antispam' nur setzen, wenn die neueste Version gebaut wird
+          if [ "$TAG" = "$LATEST_TAG" ]; then IS_LATEST=true; else IS_LATEST=false; fi
+
+          echo "tag=$TAG"                         >> "$GITHUB_OUTPUT"
+          echo "versioned_tag=${TAG}-antispam"    >> "$GITHUB_OUTPUT"
+          echo "is_latest=$IS_LATEST"             >> "$GITHUB_OUTPUT"
+          echo "Zu bauender Tag: $TAG (neueste stabile Version: $LATEST_TAG)"
 
       # -----------------------------------------------------------------------
-      # 2. Prüfen ob der versionierte Tag schon in der Registry existiert
+      # 2. Prüfen ob der versionierte Tag schon in der Registry existiert.
+      #    Ein vorhandener Tag, der kein Multi-Arch-Manifest ist (z. B. alte
+      #    Single-Arch-Builds), wird ebenfalls neu gebaut – der Tag bleibt
+      #    dabei erhalten und zeigt danach auf das Multi-Arch-Manifest.
       # -----------------------------------------------------------------------
       - name: Prüfen ob Image bereits in Registry vorhanden
         id: check
+        env:
+          FORCE: ${{ inputs.force }}
         run: |
           VERSIONED_TAG="${{ steps.synapse.outputs.versioned_tag }}"
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${{ gitea.server_url }}/api/v1/packages/${{ gitea.repository_owner }}/container/${{ env.IMAGE_NAME }}/${VERSIONED_TAG}" \
-            -H "Authorization: token ${{ secrets.TOKEN }}")
 
-          if [ "$HTTP_CODE" = "200" ]; then
-            echo "exists=true"  >> "$GITHUB_OUTPUT"
-            echo "Tag '${VERSIONED_TAG}' bereits vorhanden – kein Build nötig."
-          else
+          if [ "$FORCE" = "true" ]; then
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Tag '${VERSIONED_TAG}' nicht gefunden – Build wird gestartet."
+            echo "Force-Build angefordert – Tag '${VERSIONED_TAG}' wird neu gebaut."
+            exit 0
           fi
 
+          MEDIA_TYPE=$(curl -s \
+            -u "${{ secrets.REGISTRY_USER }}:${{ secrets.TOKEN }}" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
+            -o /dev/null -w "%{http_code} %{content_type}" \
+            "https://${{ vars.REGISTRY_HOST }}/v2/${{ gitea.repository_owner }}/${{ env.IMAGE_NAME }}/manifests/${VERSIONED_TAG}")
+
+          case "$MEDIA_TYPE" in
+            "200 "*image.index*|"200 "*manifest.list*)
+              echo "exists=true"  >> "$GITHUB_OUTPUT"
+              echo "Tag '${VERSIONED_TAG}' bereits als Multi-Arch-Image vorhanden – kein Build nötig."
+              ;;
+            "200 "*)
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+              echo "Tag '${VERSIONED_TAG}' ist nur ein Single-Arch-Image – wird als Multi-Arch neu gebaut."
+              ;;
+            *)
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+              echo "Tag '${VERSIONED_TAG}' nicht gefunden (${MEDIA_TYPE}) – Build wird gestartet."
+              ;;
+          esac
+
       # -----------------------------------------------------------------------
-      # 3. Registry Login
+      # 3. QEMU & Buildx für Multi-Arch-Builds einrichten
+      # -----------------------------------------------------------------------
+      - name: QEMU einrichten
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Docker Buildx einrichten
+        if: steps.check.outputs.exists == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      # -----------------------------------------------------------------------
+      # 4. Registry Login
       # -----------------------------------------------------------------------
       - name: Registry Login
         if: steps.check.outputs.exists == 'false'
@@ -68,47 +126,70 @@ jobs:
                 -u "${{ secrets.REGISTRY_USER }}" --password-stdin
 
       # -----------------------------------------------------------------------
-      # 4. Docker Image bauen (SYNAPSE_VERSION als Build-Arg übergeben)
+      # 5. Multi-Arch-Image bauen und versionierten Tag pushen
+      #    (SYNAPSE_VERSION als Build-Arg übergeben)
       # -----------------------------------------------------------------------
-      - name: Docker Image bauen
+      - name: Multi-Arch-Image bauen & pushen
         if: steps.check.outputs.exists == 'false'
         run: |
           REGISTRY="${{ vars.REGISTRY_HOST }}/${{ gitea.repository_owner }}/${{ env.IMAGE_NAME }}"
           SYNAPSE_TAG="${{ steps.synapse.outputs.tag }}"
           VERSIONED_TAG="${{ steps.synapse.outputs.versioned_tag }}"
 
-          docker build \
+          docker buildx build \
+            --platform "${{ env.PLATFORMS }}" \
+            --pull \
             --no-cache \
+            --provenance=false \
+            --sbom=false \
             --build-arg SYNAPSE_VERSION="${SYNAPSE_TAG}" \
             -t "${REGISTRY}:${VERSIONED_TAG}" \
-            -t "${REGISTRY}:latest-antispam" \
+            --push \
             .
 
       # -----------------------------------------------------------------------
-      # 5. Alten 'latest-antispam' Tag in Gitea löschen, damit Gitea das Datum
-      #    korrekt aktualisiert (gleiche Logik wie im bisherigen Bash-Skript)
+      # 6. Alten 'latest-antispam' Tag in Gitea löschen, damit Gitea das Datum
+      #    korrekt aktualisiert, und direkt danach neu auf das frisch gebaute
+      #    Multi-Arch-Manifest setzen (nur Manifest-Kopie, dauert Sekunden)
       # -----------------------------------------------------------------------
-      - name: Alten 'latest-antispam' Tag aus Registry löschen
-        if: steps.check.outputs.exists == 'false'
-        run: |
-          curl -s -X DELETE \
-            "${{ gitea.server_url }}/api/v1/packages/${{ gitea.repository_owner }}/container/${{ env.IMAGE_NAME }}/latest-antispam" \
-            -H "Authorization: token ${{ secrets.TOKEN }}" || true
-
-      # -----------------------------------------------------------------------
-      # 6. Beide Tags in die Registry pushen
-      # -----------------------------------------------------------------------
-      - name: Images pushen
-        if: steps.check.outputs.exists == 'false'
+      - name: Tag latest-antispam aktualisieren
+        if: steps.check.outputs.exists == 'false' && steps.synapse.outputs.is_latest == 'true'
         run: |
           REGISTRY="${{ vars.REGISTRY_HOST }}/${{ gitea.repository_owner }}/${{ env.IMAGE_NAME }}"
           VERSIONED_TAG="${{ steps.synapse.outputs.versioned_tag }}"
 
-          docker push "${REGISTRY}:${VERSIONED_TAG}"
-          docker push "${REGISTRY}:latest-antispam"
+          curl -s -X DELETE \
+            "${{ gitea.server_url }}/api/v1/packages/${{ gitea.repository_owner }}/container/${{ env.IMAGE_NAME }}/latest-antispam" \
+            -H "Authorization: token ${{ secrets.TOKEN }}" || true
+
+          docker buildx imagetools create \
+            -t "${REGISTRY}:latest-antispam" \
+            "${REGISTRY}:${VERSIONED_TAG}"
 
       # -----------------------------------------------------------------------
-      # 7. Ntfy Erfolgs-Benachrichtigung
+      # 7. Prüfen, ob alle Plattformen im Manifest enthalten sind
+      # -----------------------------------------------------------------------
+      - name: Multi-Arch-Manifest prüfen
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          REGISTRY="${{ vars.REGISTRY_HOST }}/${{ gitea.repository_owner }}/${{ env.IMAGE_NAME }}"
+          TAGS="${{ steps.synapse.outputs.versioned_tag }}"
+          [ "${{ steps.synapse.outputs.is_latest }}" = "true" ] && TAGS="$TAGS latest-antispam"
+
+          for T in $TAGS; do
+            INSPECT=$(docker buildx imagetools inspect "${REGISTRY}:${T}")
+            echo "$INSPECT"
+            for P in $(echo "${{ env.PLATFORMS }}" | tr ',' ' '); do
+              if ! echo "$INSPECT" | grep -q "Platform:.*${P}"; then
+                echo "::error::Plattform ${P} fehlt im Manifest von ${T}!"
+                exit 1
+              fi
+            done
+            echo "✓ ${T}: alle Plattformen vorhanden (${{ env.PLATFORMS }})"
+          done
+
+      # -----------------------------------------------------------------------
+      # 8. Ntfy Erfolgs-Benachrichtigung
       #    Secrets werden als Umgebungsvariablen übergeben, damit sie nicht
       #    direkt in Shell-Kommandos interpoliert werden.
       # -----------------------------------------------------------------------
@@ -126,7 +207,7 @@ jobs:
           SERVER_URL="${{ gitea.server_url }}"
           REPO="${{ gitea.repository }}"
           TITLE="✅ Synapse aktualisiert"
-          MESSAGE="gitea_actions: Neues Docker-Image '${VERSIONED_TAG}' erfolgreich gebaut und in die Registry ${REGISTRY_HOST}/${OWNER}/-/packages/container/${IMAGE} gepusht. -- Weitere Infos hier: ${SERVER_URL}/${REPO}"
+          MESSAGE="gitea_actions: Neues Docker-Image '${VERSIONED_TAG}' erfolgreich gebaut und in die Registry https://${REGISTRY_HOST}/${OWNER}/-/packages/container/${IMAGE} gepusht. -- Weitere Infos hier: ${SERVER_URL}/${REPO}"
 
           # Öffentlicher Topic – optional mit Auth (falls ntfy Auth erfordert)
           if [ -n "$NTFY_PUBLIC" ]; then
